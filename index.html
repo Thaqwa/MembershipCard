@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>Member Card System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body class="bg-slate-100 min-h-screen p-4">
+
+    <div class="max-w-md mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <div class="bg-indigo-700 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold italic tracking-tight">QR ISSUE SYSTEM</h1>
+        </div>
+
+        <div class="p-5">
+            <div id="reader" class="overflow-hidden rounded-2xl bg-black mb-4 aspect-square"></div>
+            
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <button id="cameraToggle" onclick="toggleCamera()" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-md active:scale-95 transition-all">
+                    Start Camera
+                </button>
+
+                <button onclick="exportData()" class="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl shadow-md active:scale-95 transition-all">
+                    Export Excel
+                </button>
+            </div>
+
+            <button id="resetBtn" onclick="clearStorage()" class="hidden w-full bg-white text-red-500 border-2 border-red-100 font-bold py-3 rounded-2xl mb-4">
+                Clear All Local Data
+            </button>
+        </div>
+
+        <div class="p-5 bg-slate-50 border-t border-slate-100">
+            <h3 class="text-slate-400 font-bold text-xs uppercase mb-3">Recent Scans</h3>
+            <div id="scans" class="space-y-2 max-h-40 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <script>
+        let html5QrCode;
+        let isProcessing = false;
+        let isCameraRunning = false;
+
+        // Audio for scan feedback
+        const beep = new Audio('https://assets.mixkit.co/active_storage/sfx/701/701-preview.mp3');
+
+        function toggleCamera() {
+            const btn = document.getElementById('cameraToggle');
+            
+            if (!isCameraRunning) {
+                if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+                
+                const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+                
+                html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                    .then(() => {
+                        isCameraRunning = true;
+                        btn.innerText = "Close Camera";
+                        btn.classList.replace('bg-indigo-600', 'bg-slate-800');
+                    })
+                    .catch(err => Swal.fire('Error', 'Camera access denied.', 'error'));
+            } else {
+                html5QrCode.stop().then(() => {
+                    isCameraRunning = false;
+                    btn.innerText = "Start Camera";
+                    btn.classList.replace('bg-slate-800', 'bg-indigo-600');
+                    document.getElementById('reader').innerHTML = ''; // Clean UI
+                });
+            }
+        }
+
+        function onScanSuccess(decodedText) {
+            if (isProcessing) return;
+            isProcessing = true;
+            beep.play(); // Audible feedback
+
+            let data = JSON.parse(localStorage.getItem('member_db')) || [];
+            const exists = data.find(m => m.id === decodedText);
+
+            if (exists) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Duplicate Detected',
+                    text: `Card ${decodedText} was already issued at ${exists.timestamp}`,
+                    confirmButtonText: 'Scan Next',
+                    confirmButtonColor: '#4f46e5'
+                }).then(() => { isProcessing = false; });
+            } else {
+                const entry = { id: decodedText, timestamp: new Date().toLocaleString() };
+                data.push(entry);
+                localStorage.setItem('member_db', JSON.stringify(data));
+                updateLog();
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'New Card Issued',
+                    text: `ID: ${decodedText}`,
+                    confirmButtonText: 'Scan Next',
+                    confirmButtonColor: '#10b981'
+                }).then(() => { isProcessing = false; });
+            }
+        }
+
+        function updateLog() {
+            const data = JSON.parse(localStorage.getItem('member_db')) || [];
+            const container = document.getElementById('scans');
+            container.innerHTML = data.slice().reverse().map(m => `
+                <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+                    <span class="font-mono font-bold text-indigo-900">${m.id}</span>
+                    <span class="text-[10px] text-slate-400 font-medium">${m.timestamp}</span>
+                </div>
+            `).join('');
+        }
+
+        function exportData() {
+            const data = JSON.parse(localStorage.getItem('member_db')) || [];
+            if (data.length === 0) return Swal.fire('No Data', 'Nothing to export.', 'info');
+
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Members");
+            const fName = `Member_Export_${Date.now()}.xlsx`;
+            XLSX.writeFile(wb, fName);
+
+            // WhatsApp Share
+            window.open(`https://wa.me/?text=Report Generated: ${fName}`, '_blank');
+            document.getElementById('resetBtn').classList.remove('hidden');
+        }
+
+        function clearStorage() {
+            Swal.fire({
+                title: 'Clear Data?',
+                text: "All entries will be wiped.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444'
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    localStorage.removeItem('member_db');
+                    updateLog();
+                    document.getElementById('resetBtn').classList.add('hidden');
+                }
+            });
+        }
+
+        updateLog();
+    </script>
+</body>
+</html>
