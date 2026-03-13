@@ -3,151 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
-    <title>Member Card System</title>
+    <title>Member Scanner Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
-<body class="bg-slate-100 min-h-screen p-4">
+<body class="bg-slate-100 min-h-screen p-4 font-sans">
 
-    <div class="max-w-md mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden">
-        <div class="bg-indigo-700 p-6 text-white text-center">
-            <h1 class="text-2xl font-bold italic tracking-tight">QR ISSUE SYSTEM</h1>
+    <div class="max-w-md mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+        <div class="bg-slate-900 p-6 text-white text-center">
+            <h1 class="text-2xl font-black tracking-tighter uppercase italic">ScanStation</h1>
+            <p class="text-[10px] text-slate-400 tracking-[0.2em] uppercase mt-1">High-Speed Recognition</p>
         </div>
 
         <div class="p-5">
-            <div id="reader" class="overflow-hidden rounded-2xl bg-black mb-4 aspect-square"></div>
+            <div id="reader" class="overflow-hidden rounded-2xl bg-black mb-4 aspect-square shadow-inner border-4 border-slate-100"></div>
             
-            <div class="grid grid-cols-2 gap-3 mb-4">
-                <button id="cameraToggle" onclick="toggleCamera()" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-md active:scale-95 transition-all">
-                    Start Camera
-                </button>
-
-                <button onclick="exportData()" class="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl shadow-md active:scale-95 transition-all">
-                    Export Excel
-                </button>
-            </div>
-
-            <button id="resetBtn" onclick="clearStorage()" class="hidden w-full bg-white text-red-500 border-2 border-red-100 font-bold py-3 rounded-2xl mb-4">
-                Clear All Local Data
+            <button id="cameraToggle" onclick="toggleCamera()" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+                <span id="btnIcon">📷</span> <span id="btnText">Start Scanner</span>
             </button>
         </div>
 
         <div class="p-5 bg-slate-50 border-t border-slate-100">
-            <h3 class="text-slate-400 font-bold text-xs uppercase mb-3">Recent Scans</h3>
-            <div id="scans" class="space-y-2 max-h-40 overflow-y-auto"></div>
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-slate-500 font-bold text-xs uppercase">Recent Scans</h3>
+                <span id="count" class="bg-indigo-100 text-indigo-600 text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+            </div>
+            <div id="scans" class="space-y-2 max-h-48 overflow-y-auto"></div>
         </div>
     </div>
 
     <script>
         let html5QrCode;
-        let isProcessing = false;
         let isCameraRunning = false;
 
-        // Audio for scan feedback
-        const beep = new Audio('https://assets.mixkit.co/active_storage/sfx/701/701-preview.mp3');
+        // AUTHENTIC SCANNER SOUND (Online Source)
+        const scannerBeep = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
+        
+        // Preload the sound so there is zero lag on the first scan
+        scannerBeep.load();
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Play the "Real" sound immediately
+            scannerBeep.currentTime = 0;
+            scannerBeep.play();
+
+            // Vibrate mobile device (haptic feedback)
+            if (navigator.vibrate) navigator.vibrate(100);
+
+            // Log the scan
+            addScanToHistory(decodedText);
+            
+            // Show Success Alert
+            Swal.fire({
+                title: 'Scanned!',
+                text: decodedText,
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                borderBox: '20px'
+            });
+        }
 
         function toggleCamera() {
-            const btn = document.getElementById('cameraToggle');
-            
+            const btnText = document.getElementById('btnText');
+            const btnIcon = document.getElementById('btnIcon');
+
             if (!isCameraRunning) {
-                if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
-                
-                const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-                
-                html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-                    .then(() => {
-                        isCameraRunning = true;
-                        btn.innerText = "Close Camera";
-                        btn.classList.replace('bg-indigo-600', 'bg-slate-800');
-                    })
-                    .catch(err => Swal.fire('Error', 'Camera access denied.', 'error'));
+                html5QrCode = new Html5Qrcode("reader");
+                html5QrCode.start(
+                    { facingMode: "environment" }, 
+                    { fps: 15, qrbox: { width: 250, height: 250 } },
+                    onScanSuccess
+                ).then(() => {
+                    isCameraRunning = true;
+                    btnText.innerText = "Stop Scanner";
+                    btnIcon.innerText = "🛑";
+                });
             } else {
                 html5QrCode.stop().then(() => {
                     isCameraRunning = false;
-                    btn.innerText = "Start Camera";
-                    btn.classList.replace('bg-slate-800', 'bg-indigo-600');
-                    document.getElementById('reader').innerHTML = ''; // Clean UI
+                    btnText.innerText = "Start Scanner";
+                    btnIcon.innerText = "📷";
+                    document.getElementById('reader').innerHTML = '';
                 });
             }
         }
 
-        function onScanSuccess(decodedText) {
-            if (isProcessing) return;
-            isProcessing = true;
-            beep.play(); // Audible feedback
-
-            let data = JSON.parse(localStorage.getItem('member_db')) || [];
-            const exists = data.find(m => m.id === decodedText);
-
-            if (exists) {
-                Swal.fire({
-                    icon: 'warning',
-                    title: 'Duplicate Detected',
-                    text: `Card ${decodedText} was already issued at ${exists.timestamp}`,
-                    confirmButtonText: 'Scan Next',
-                    confirmButtonColor: '#4f46e5'
-                }).then(() => { isProcessing = false; });
-            } else {
-                const entry = { id: decodedText, timestamp: new Date().toLocaleString() };
-                data.push(entry);
-                localStorage.setItem('member_db', JSON.stringify(data));
-                updateLog();
-
-                Swal.fire({
-                    icon: 'success',
-                    title: 'New Card Issued',
-                    text: `ID: ${decodedText}`,
-                    confirmButtonText: 'Scan Next',
-                    confirmButtonColor: '#10b981'
-                }).then(() => { isProcessing = false; });
-            }
-        }
-
-        function updateLog() {
-            const data = JSON.parse(localStorage.getItem('member_db')) || [];
+        function addScanToHistory(text) {
             const container = document.getElementById('scans');
-            container.innerHTML = data.slice().reverse().map(m => `
-                <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-slate-200">
-                    <span class="font-mono font-bold text-indigo-900">${m.id}</span>
-                    <span class="text-[10px] text-slate-400 font-medium">${m.timestamp}</span>
-                </div>
-            `).join('');
+            const count = document.getElementById('count');
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            const div = document.createElement('div');
+            div.className = "flex justify-between items-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm animate-fade-in";
+            div.innerHTML = `
+                <span class="text-sm font-medium text-slate-700 truncate mr-4">${text}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${time}</span>
+            `;
+            container.prepend(div);
+            count.innerText = container.children.length;
         }
-
-        function exportData() {
-            const data = JSON.parse(localStorage.getItem('member_db')) || [];
-            if (data.length === 0) return Swal.fire('No Data', 'Nothing to export.', 'info');
-
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Members");
-            const fName = `Member_Export_${Date.now()}.xlsx`;
-            XLSX.writeFile(wb, fName);
-
-            // WhatsApp Share
-            window.open(`https://wa.me/?text=Report Generated: ${fName}`, '_blank');
-            document.getElementById('resetBtn').classList.remove('hidden');
-        }
-
-        function clearStorage() {
-            Swal.fire({
-                title: 'Clear Data?',
-                text: "All entries will be wiped.",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#ef4444'
-            }).then((res) => {
-                if (res.isConfirmed) {
-                    localStorage.removeItem('member_db');
-                    updateLog();
-                    document.getElementById('resetBtn').classList.add('hidden');
-                }
-            });
-        }
-
-        updateLog();
     </script>
+
+    <style>
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fade-in 0.3s ease-out; }
+    </style>
 </body>
 </html>
